@@ -2,13 +2,18 @@
 //  Extract a 2nd voice onto a staff from an 'a2'-style notated staff
 //  Copyright (C) 2017 Johan Temmerman (jeetee)
 //=============================================================================
-import QtQuick 2.0
+import QtQuick 2.2
+import QtQuick.Controls 1.1
+import QtQuick.Dialogs 1.2
+import QtQuick.Layouts 1.1
 import MuseScore 1.0
 
 MuseScore {
       menuPath: "Plugins.ExplodeVoiceAndFill"
-      version:  "0.0.1"
+      version:  "1.0.0"
       description: qsTr("Split out voices according to 'a2'-style")
+      //pluginType: "dialog" //prevents auto-update of the combobox when ran from Menu
+      //requiresScore: true //not supported before 2.1.0, manual checking onRun
 
       Timer {
             //moving right after copy doesn't work
@@ -32,13 +37,87 @@ MuseScore {
                   console.log(qsTranslate("QMessageBox", "No score open.\nThis plugin requires an open score to run.\n"));
                   Qt.quit();
             }
+            fillDropDowns();
+            pluginDialog.open();
+      }
+
+      function fillDropDowns() {
+            //load staff list
+            staffList.clear();
+            for (var i = 0; i < curScore.parts.length; ++i) {
+                  var part = curScore.parts[i];
+                  var nPartStaves = (part.endTrack - part.startTrack) / 4;
+                  for (var p = 0; p < nPartStaves; ++p) {
+                        staffList.append({
+                              text: part.partName + ((nPartStaves > 1)? (' ' + (p + 1)) : ''),
+                              partStartTrack: part.startTrack
+                        });
+                  }
+            }
+      }
+
+      Dialog {
+            id: pluginDialog
+            width: 480
+            height: 300
+
+            contentItem: Rectangle {
+                  color: "lightgrey"
+                  anchors.fill: parent
+
+                  ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+
+                        Label {
+                              text: qsTr("<h1>Instructions</h1><h2>Manual preparation</h2><ol><li>copy 'From' to 'To'</li><li>swap voices 1 &amp; 2 on 'To'</li><li>entirely remove voice 2 on the 'To' staff<br>(select more -&gt; same voice, or use selection filter), make sure no rests are left behind</li></ol><h2>Run this plugin</h2>Set the correct 'From' and 'To' staves:");
+                        }
+
+                        GridLayout {
+                              columns: 2
+
+                              Label {
+                                    text: qsTr("From") + ": "
+                              }
+                              ComboBox {
+                                    id: staffSelectionFrom
+                                    model: ListModel {
+                                          id: staffList
+                                          //dummy ListElement required for initial creation of this component
+                                          ListElement { text: "partName+staff"; partStartTrack: 0 }
+                                    }
+                              }
+
+                              Label {
+                                    text: qsTr("To") + ": "
+                              }
+                              ComboBox {
+                                    id: staffSelectionTo
+                                    model: staffList
+                              }
+                        }//GridLayout
+
+                        Button {
+                              id: copyVoice1Button
+                              Layout.fillHeight: true
+                              Layout.fillWidth: true
+                              text: qsTr("Copy")
+                              onClicked: {
+                                    copyVoice1WhereVoice2isnt();
+                              }
+                        }
+                  } //ColumnLayout
+            }//contentItem
+      }//Dialog
+
+      function copyVoice1WhereVoice2isnt() {
+            //get selected tracks
+            var myVoice1Track = staffList.get(staffSelectionFrom.currentIndex).partStartTrack;
+            var myVoice2Track = myVoice1Track + 1;
+            var targetVoice1Track = staffList.get(staffSelectionTo.currentIndex).partStartTrack;
+            console.log('Copy track ' + myVoice1Track + ' to ' + targetVoice1Track + ' where there is no data in track ' + myVoice2Track);
 
             console.log('Analysing voice 2');
-            //currently a fixed track in test score
-            var myVoice1Track = 4;
-            var myVoice2Track = 5;
-            var targetVoice1Track = 8;
-
             var voice2dataRanges = [];
             var currentVoice2dataRange = null;//{ 'from': {'tick': null, 'seg': null}, 'till': {'tick': null, 'seg': null}};
 
@@ -129,6 +208,8 @@ MuseScore {
                                     yieldForCopy.triggered.disconnect(pasteFunc);
                                     yieldForPaste.triggered.disconnect(afterPasteFunc);
                                     cmd("escape"); //de-select
+                                    //close dialog?
+                                    pluginDialog.close();
                                     Qt.quit(); //done
                               }
                         });
